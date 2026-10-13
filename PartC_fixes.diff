@@ -1,0 +1,314 @@
+diff --git a/lab/lab.env b/lab/lab.env
+index 3b524de..e9beb7d 100644
+--- a/lab/lab.env
++++ b/lab/lab.env
+@@ -22,7 +22,7 @@ MERIDIAN_HTTPS_COOKIES=false
+ MERIDIAN_CSRF_TRUSTED_ORIGINS=http://127.0.0.1:5001,http://localhost:5001
+ 
+ # Attachment type validation is off in the lab.
+-HELPDESK_VALIDATE_ATTACHMENT_TYPES=False
++HELPDESK_VALIDATE_ATTACHMENT_TYPES=True
+ 
+ # Debug mode left on (misconfiguration lab).
+ MERIDIAN_DEBUG=True
+diff --git a/lab/nginx.conf b/lab/nginx.conf
+index 6ce0162..3355b37 100644
+--- a/lab/nginx.conf
++++ b/lab/nginx.conf
+@@ -10,8 +10,25 @@ server {
+     # Edge size limit, layered with the application's own upload check.
+     client_max_body_size 10m;
+ 
+-    location /media/ {
+-        alias /srv/media/;
++    # Layer 1 fix (Part C): make the upload directory inert.
++    #   ^~  wins at step 2 of nginx's location precedence and STOPS before the
++    #       server-wide `~ \.php$` regex is ever consulted, so an uploaded
++    #       /media/.../shell.php is served as bytes, never handed to PHP (kills B1).
++    #   types { } + default_type application/octet-stream  empties the
++    #       extension->MIME table and labels every file an opaque blob, so an
++    #       .html is no longer text/html and an .svg no longer image/svg+xml;
++    #       the browser picks no parser (kills B2). Both lines are needed: default_type
++    #       only applies when nginx cannot infer a type.
++    #   Content-Disposition: attachment  the browser saves instead of rendering.
++    #   X-Content-Type-Options: nosniff  stops the browser overruling the type by
++    #       sniffing the bytes. The three MIME lines only work together.
++    #   `always`  applies the headers to error responses too.
++    location ^~ /media/ {
++        root /srv;
++        types { }
++        default_type application/octet-stream;
++        add_header Content-Disposition "attachment" always;
++        add_header X-Content-Type-Options "nosniff" always;
+         autoindex off;
+     }
+ 
+diff --git a/src/helpdesk/forms.py b/src/helpdesk/forms.py
+index fe64640..fe15f39 100644
+--- a/src/helpdesk/forms.py
++++ b/src/helpdesk/forms.py
+@@ -47,7 +47,7 @@ from helpdesk.settings import (
+ )
+ from helpdesk.signals import new_ticket_done
+ from helpdesk.user import HelpdeskUser
+-from helpdesk.validators import validate_file_extension
++from helpdesk.validators import validate_file_extension, validate_image_content
+ 
+ if helpdesk_settings.HELPDESK_KB_ENABLED:
+     from helpdesk.models import KBItem
+@@ -342,7 +342,7 @@ class AbstractTicketForm(CustomFieldMixin, forms.Form):
+                 "a document (.pdf, .docx, or .odt), "
+                 "or screenshot (.png or .jpg) may be uploaded."
+             ),
+-            validators=[validate_file_extension],
++            validators=[validate_file_extension, validate_image_content],
+         )
+ 
+     class Media:
+diff --git a/src/helpdesk/lib.py b/src/helpdesk/lib.py
+index abe212b..3c7508a 100644
+--- a/src/helpdesk/lib.py
++++ b/src/helpdesk/lib.py
+@@ -149,6 +149,48 @@ def text_is_spam(text, request):
+     return False
+ 
+ 
++def _reencode_if_image(attached, filename):
++    """Part C Layer-2 fix: content-based type check for images.
++
++    If the extension says this is an image we accept, prove it by decoding the
++    bytes with Pillow and re-encoding them. Only real raster data survives, so a
++    script smuggled into the file is destroyed. Returns a new file object to
++    store; raises ValidationError if the bytes are not a valid image. Non-image
++    attachments are returned unchanged (the extension allowlist already gates
++    them, and we do not re-encode documents).
++    """
++    import io
++    import os
++
++    from django.core.exceptions import ValidationError
++    from django.core.files.base import ContentFile
++
++    image_exts = {".jpg": "JPEG", ".jpeg": "JPEG", ".png": "PNG"}
++    ext = os.path.splitext(os.path.basename(filename))[1].lower()
++    fmt = image_exts.get(ext)
++    if not fmt:
++        return attached
++
++    try:
++        from PIL import Image
++
++        attached.seek(0)
++        with Image.open(attached) as img:
++            img.load()
++            if fmt == "JPEG" and img.mode in ("RGBA", "P"):
++                img = img.convert("RGB")
++            buf = io.BytesIO()
++            img.save(buf, format=fmt)
++    except ValidationError:
++        raise
++    except Exception:
++        raise ValidationError(
++            "Attachment %(name)s is not a valid image." % {"name": filename}
++        )
++
++    return ContentFile(buf.getvalue(), name=os.path.basename(filename))
++
++
+ def process_attachments(followup, attached_files):
+     max_email_attachment_size = getattr(
+         settings, "HELPDESK_MAX_EMAIL_ATTACHMENT_SIZE", 512000
+@@ -161,11 +203,25 @@ def process_attachments(followup, attached_files):
+             from helpdesk.models import FollowUpAttachment
+ 
+             filename = smart_str(attached.name)
++
++            # Part C Layer-2 fix: decide the type from the CONTENT, not the
++            # claim. For an allowlisted image, decode the bytes and re-encode
++            # them (decode, then re-save) - the strongest form, because it keeps
++            # only real pixel data and strips anything that was not (a script in
++            # EXIF, polyglot trailer bytes, and so on). A file whose bytes are
++            # not actually that image is rejected. We never trust the declared
++            # Content-Type or the extension here.
++            try:
++                attached = _reencode_if_image(attached, filename)
++            except ValidationError as e:
++                errors.add(e)
++                continue
++
+             att = FollowUpAttachment(
+                 followup=followup,
+                 file=attached,
+                 filename=filename,
+-                mime_type=attached.content_type
++                mime_type=getattr(attached, "content_type", None)
+                 or mimetypes.guess_type(filename, strict=False)[0]
+                 or "application/octet-stream",
+                 size=attached.size,
+diff --git a/src/helpdesk/models.py b/src/helpdesk/models.py
+index ec94c50..3c16304 100644
+--- a/src/helpdesk/models.py
++++ b/src/helpdesk/models.py
+@@ -1212,6 +1212,22 @@ def attachment_path(instance, filename):
+     return instance.attachment_path(filename)
+ 
+ 
++def _server_generated_name(filename):
++    """Part C Layer-2 fix: choose the stored name ourselves.
++
++    The sender's filename is display text only - never a path. We store the
++    bytes under a random token plus the (allowlisted, lower-cased) extension, so
++    a name like ``../../etc/cron.d/evil`` or ``shell.php`` can neither decide
++    where the file lands nor what it is called. The original name is still kept,
++    but only as a label in the ``filename`` column, never as a path.
++    """
++    import os
++    import secrets
++
++    ext = os.path.splitext(os.path.basename(filename))[1].lower()
++    return secrets.token_hex(16) + ext
++
++
+ class Attachment(models.Model):
+     """
+     Represents a file attached to a follow-up. This could come from an e-mail
+@@ -1297,7 +1313,7 @@ class FollowUpAttachment(Attachment):
+             and not os.path.exists(att_path)
+         ):
+             os.makedirs(att_path, helpdesk_settings.HELPDESK_ATTACHMENT_DIR_PERMS)
+-        return os.path.join(path, filename)
++        return os.path.join(path, _server_generated_name(filename))
+ 
+ 
+ class KBIAttachment(Attachment):
+@@ -1315,7 +1331,7 @@ class KBIAttachment(Attachment):
+             and not os.path.exists(att_path)
+         ):
+             os.makedirs(att_path, helpdesk_settings.HELPDESK_ATTACHMENT_DIR_PERMS)
+-        return os.path.join(path, filename)
++        return os.path.join(path, _server_generated_name(filename))
+ 
+ 
+ class PreSetReply(models.Model):
+diff --git a/src/helpdesk/validators.py b/src/helpdesk/validators.py
+index 0578c5b..91ec613 100644
+--- a/src/helpdesk/validators.py
++++ b/src/helpdesk/validators.py
+@@ -16,16 +16,64 @@ def validate_file_extension(value):
+ 
+     from django.core.exceptions import ValidationError
+ 
+-    ext = os.path.splitext(value.name)[1]  # [0] returns path+filename
+-    # TODO: we might improve this with more thorough checks of file types
+-    # rather than just the extensions.
+-
+     if not helpdesk_settings.HELPDESK_VALIDATE_ATTACHMENT_TYPES:
+         return
+ 
+-    # TODO: one more check in case it is a file with no extension; we
+-    # should always allow that?
+-    if ext.lower() not in helpdesk_settings.HELPDESK_VALID_EXTENSIONS and not (
+-        ext.lower() == "" or ext.lower() == "."
++    # Part C Layer-2 fix: validate on the base name only (never a directory
++    # component the sender may have smuggled in via the filename).
++    name = os.path.basename(value.name)
++
++    # Part C Layer-2 fix: reject any filename with more than one dot OUTRIGHT.
++    # splitext() only sees the final extension, so shell.php.png looks like a
++    # harmless .png to the allowlist below; a double extension is the whole
++    # point of that trick, so refuse it before it can reach disk.
++    if name.count(".") > 1:
++        raise ValidationError(
++            _("Filenames with more than one dot are not allowed: ") + name
++        )
++
++    ext = os.path.splitext(name)[1].lower()  # [0] returns path+filename
++
++    # Allowlist: accept only the few extensions we know are safe, and reject
++    # everything else (never blocklist dangerous ones - that list is never
++    # finished). A file with no extension is still allowed, as before.
++    if ext not in helpdesk_settings.HELPDESK_VALID_EXTENSIONS and not (
++        ext == "" or ext == "."
+     ):
+-        raise ValidationError(_("Unsupported file extension: ") + ext.lower())
++        raise ValidationError(_("Unsupported file extension: ") + ext)
++
++
++def validate_image_content(value):
++    """Part C Layer-2 fix: for anything that claims to be an image by its
++    extension, decide the type from the CONTENT, not the claim. Decode the bytes
++    with Pillow; if they are not actually that image, reject. This is what stops
++    a PHP web shell (or an SVG carrying script) renamed to ``evil.png`` from
++    being stored just because ``.png`` is on the allowlist. The accepted bytes
++    are re-encoded at save time (see helpdesk.lib) so only pixel data survives.
++    """
++    import os
++
++    from django.core.exceptions import ValidationError
++
++    if not helpdesk_settings.HELPDESK_VALIDATE_ATTACHMENT_TYPES:
++        return
++
++    ext = os.path.splitext(os.path.basename(value.name))[1].lower()
++    if ext not in (".jpg", ".jpeg", ".png"):
++        return
++
++    try:
++        from PIL import Image
++
++        value.seek(0)
++        with Image.open(value) as img:
++            img.verify()  # raises if the bytes are not a valid image
++    except ValidationError:
++        raise
++    except Exception:
++        raise ValidationError(_("File is not a valid image."))
++    finally:
++        try:
++            value.seek(0)
++        except Exception:
++            pass
+diff --git a/src/helpdesk/views/staff.py b/src/helpdesk/views/staff.py
+index de7cd64..d245cfb 100644
+--- a/src/helpdesk/views/staff.py
++++ b/src/helpdesk/views/staff.py
+@@ -1457,15 +1457,34 @@ def debug_info(request):
+ 
+ @helpdesk_staff_member_required
+ def download_attachment(request):
+-    """Download an attachment by its stored path under the media directory."""
++    """Download an attachment by its stored path under the media directory.
++
++    Part C Layer-2 fix: close the path traversal. The bug was joining a request
++    parameter onto MEDIA_ROOT and opening the result without ever confirming it
++    stayed inside. Resolve the final path FIRST (so the OS collapses any ../),
++    THEN verify containment - a check on the raw string would pass while the real
++    path escaped, because the ../ are resolved after the string is built. Anything
++    outside MEDIA_ROOT, or that cannot be opened, returns a generic 404 that never
++    leaks a filesystem path.
++    """
+     import os
+ 
+     rel = request.GET.get("path", "")
+-    full = os.path.join(settings.MEDIA_ROOT, rel)
+-    with open(full, "rb") as handle:
+-        data = handle.read()
++    media_root = os.path.realpath(settings.MEDIA_ROOT)
++    full = os.path.realpath(os.path.join(media_root, rel))
++
++    # Containment: the resolved path must be MEDIA_ROOT itself or beneath it.
++    if full != media_root and not full.startswith(media_root + os.sep):
++        raise Http404("No such attachment.")
++
++    try:
++        with open(full, "rb") as handle:
++            data = handle.read()
++    except (FileNotFoundError, IsADirectoryError, PermissionError, OSError):
++        raise Http404("No such attachment.")
++
+     response = HttpResponse(data, content_type="application/octet-stream")
+-    response["Content-Disposition"] = f'attachment; filename="{os.path.basename(rel)}"'
++    response["Content-Disposition"] = f'attachment; filename="{os.path.basename(full)}"'
+     return response
+ 
+ 

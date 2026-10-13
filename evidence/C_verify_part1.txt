@@ -1,0 +1,35 @@
+######################## PART C VERIFICATION ########################
+
+===== CHECK 1: shell.php?cmd=id no longer executes (served inert) =====
+--- response headers + body ---
+HTTP/1.1 200 OK
+Server: nginx/1.27.5
+Date: Mon, 12 Oct 2026 18:35:44 GMT
+Content-Type: application/octet-stream
+Content-Length: 39
+Last-Modified: Mon, 12 Oct 2026 18:27:17 GMT
+Connection: keep-alive
+ETag: "6acd2685-27"
+Content-Disposition: attachment
+X-Content-Type-Options: nosniff
+Accept-Ranges: bytes
+
+
+===== CHECK 2a: notice.html now downloads, not rendered =====
+HTTP/1.1 200 OK
+Content-Type: application/octet-stream
+Content-Disposition: attachment
+X-Content-Type-Options: nosniff
+===== CHECK 2b: logo.svg now downloads, not rendered =====
+HTTP/1.1 200 OK
+Content-Type: application/octet-stream
+Content-Disposition: attachment
+X-Content-Type-Options: nosniff
+
+===== CHECK 4: path traversal now returns a generic error (no file, no path) =====
+--- /etc/passwd attempt ---
+HTTP/1.1 404 Not Found
+(body first line:)
+<!DOCTYPE html>
+--- /proc/self/environ attempt ---
+HTTP 404

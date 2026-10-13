@@ -1,0 +1,11 @@
+===== CHECK 3: malicious uploads refused at the door =====
+  shell.php        declared=image/png        -> HTTP 200  REJECTED (not stored)  :: Unsupported file extension: .php
+  notice.html      declared=text/html        -> HTTP 200  REJECTED (not stored)  :: Unsupported file extension: .html
+  logo.svg         declared=image/svg+xml    -> HTTP 200  REJECTED (not stored)  :: Unsupported file extension: .svg
+  shell.php.png    declared=image/png        -> HTTP 200  REJECTED (not stored)  :: more than one dot are not allowed: shell.php.png
+
+  (control) a legitimate .txt should still be accepted:
+  legit.txt        declared=text/plain       -> HTTP 302  ACCEPTED (stored)  
+
+  files actually on disk after the rejected attempts (should be only legit.txt-derived):
+helpdesk/attachments/support-16-11ea30c1-3b2d-42f2-b925-ea3246a0be71/13/20811339353a3d5403848252c5145448.txt

